@@ -1,0 +1,15 @@
+watch_dirs:
+  - .
+  - src
+ignore_dirs:
+  - node_modules
+  - .git
+extensions:
+  - go
+  - js
+  - css
+  - html
+command: go run main.go
+debounce_time: 500ms
+live_reload: true
+live_reload_port: 35729
