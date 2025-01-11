@@ -18,22 +18,24 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config holds the configuration for the watcher
 type Config struct {
 	WatchDirs      []string `json:"watch_dirs" yaml:"watch_dirs"`
 	IgnoreDirs     []string `json:"ignore_dirs" yaml:"ignore_dirs"`
-	Extensions     []string `json:"extensions" yaml:"extensions"`
-	Command        string   `json:"command" yaml:"command"`
+	Rules          []Rule   `json:"rules" yaml:"rules"`
 	DebounceTime   string   `json:"debounce_time" yaml:"debounce_time"`
 	LiveReload     bool     `json:"live_reload" yaml:"live_reload"`
 	LiveReloadPort int      `json:"live_reload_port" yaml:"live_reload_port"`
 }
 
+type Rule struct {
+	Extensions []string `json:"extensions" yaml:"extensions"`
+	Command    string   `json:"command" yaml:"command"`
+}
+
 var (
 	configFile     = flag.String("config", "", "Path to config file (JSON or YAML)")
-	extensions     = flag.String("ext", "go,js,css,html", "Comma-separated list of file extensions to watch")
+	watchDir       = flag.String("dir", ".", "Directory to watch (default: current directory)")
 	ignoreDirs     = flag.String("ignore", "node_modules,.git", "Comma-separated list of directories to ignore")
-	command        = flag.String("cmd", "go run main.go", "Command to run on file changes")
 	debounce       = flag.String("debounce", "500ms", "Debounce time for file changes")
 	liveReload     = flag.Bool("live-reload", false, "Enable live reload for frontend workflows")
 	liveReloadPort = flag.Int("live-reload-port", 35729, "Port for live reload server")
@@ -51,11 +53,11 @@ func main() {
 	// Initialize logger
 	logger := log.New(os.Stdout, "[gowatcher] ", log.LstdFlags|log.Lshortfile)
 
+	// Default configuration
 	config := Config{
-		WatchDirs:      []string{"."},
+		WatchDirs:      []string{*watchDir},
 		IgnoreDirs:     strings.Split(*ignoreDirs, ","),
-		Extensions:     strings.Split(*extensions, ","),
-		Command:        *command,
+		Rules:          []Rule{{Extensions: []string{"*"}, Command: "echo No command specified"}},
 		DebounceTime:   *debounce,
 		LiveReload:     *liveReload,
 		LiveReloadPort: *liveReloadPort,
@@ -97,6 +99,7 @@ func main() {
 				if err := watcher.Add(path); err != nil {
 					return fmt.Errorf("failed to add %s to watcher: %v", path, err)
 				}
+				logger.Printf("Watching directory: %s", path)
 			}
 			return nil
 		})
@@ -107,9 +110,13 @@ func main() {
 
 	logger.Println("Watching for changes...")
 
+	// Run commands on start
+	for _, rule := range config.Rules {
+		runCommand(rule.Command, logger)
+	}
+
 	var (
 		lastRestart time.Time
-		cmd         *exec.Cmd
 	)
 
 	for {
@@ -118,27 +125,16 @@ func main() {
 			if !ok {
 				return
 			}
-			if isWatchedFile(event.Name, config.Extensions) && time.Since(lastRestart) > debounceDuration {
+			if isWatchedFile(event.Name, config.Rules) && time.Since(lastRestart) > debounceDuration {
 				logger.Printf("Change detected: %s", event.Name)
 				lastRestart = time.Now()
 
-				// Kill the previous command if it's running
-				if cmd != nil && cmd.Process != nil {
-					if err := cmd.Process.Kill(); err != nil {
-						logger.Printf("Failed to kill previous command: %v", err)
+				// Run commands for matching rules
+				for _, rule := range config.Rules {
+					if isWatchedFile(event.Name, []Rule{rule}) {
+						runCommand(rule.Command, logger)
 					}
 				}
-
-				// Execute the command
-				cmd = exec.Command("sh", "-c", config.Command)
-				cmd.Stdout = os.Stdout
-				cmd.Stderr = os.Stderr
-				go func() {
-					logger.Printf("Executing command: %s", config.Command)
-					if err := cmd.Run(); err != nil {
-						logger.Printf("Command failed: %v", err)
-					}
-				}()
 
 				// Trigger live reload for frontend files
 				if config.LiveReload && isFrontendFile(event.Name) {
@@ -155,6 +151,17 @@ func main() {
 	}
 }
 
+// runCommand executes a command and logs its output
+func runCommand(command string, logger *log.Logger) {
+	cmd := exec.Command("sh", "-c", command)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	logger.Printf("Executing command: %s", command)
+	if err := cmd.Run(); err != nil {
+		logger.Printf("Command failed: %v", err)
+	}
+}
+
 // isIgnored checks if a directory should be ignored
 func isIgnored(path string, ignoreDirs []string) bool {
 	for _, dir := range ignoreDirs {
@@ -165,12 +172,14 @@ func isIgnored(path string, ignoreDirs []string) bool {
 	return false
 }
 
-// isWatchedFile checks if a file has a watched extension
-func isWatchedFile(path string, extensions []string) bool {
+// isWatchedFile checks if a file matches any rule
+func isWatchedFile(path string, rules []Rule) bool {
 	ext := filepath.Ext(path)
-	for _, e := range extensions {
-		if "."+e == ext {
-			return true
+	for _, rule := range rules {
+		for _, e := range rule.Extensions {
+			if e == "*" || "."+e == ext {
+				return true
+			}
 		}
 	}
 	return false

@@ -22,11 +22,18 @@ func TestIsIgnored(t *testing.T) {
 
 // TestIsWatchedFile tests the isWatchedFile function
 func TestIsWatchedFile(t *testing.T) {
-	extensions := []string{"go", "js"}
-	if !isWatchedFile("main.go", extensions) {
+	rules := []Rule{
+		{Extensions: []string{"go"}, Command: "go run main.go"},
+		{Extensions: []string{"js"}, Command: "node index.js"},
+	}
+
+	if !isWatchedFile("main.go", rules) {
 		t.Error("Expected main.go to be watched")
 	}
-	if isWatchedFile("README.md", extensions) {
+	if !isWatchedFile("index.js", rules) {
+		t.Error("Expected index.js to be watched")
+	}
+	if isWatchedFile("README.md", rules) {
 		t.Error("Expected README.md to not be watched")
 	}
 }
@@ -37,8 +44,16 @@ func TestLoadConfig(t *testing.T) {
 	configContent := `{
 		"watch_dirs": [".", "src"],
 		"ignore_dirs": ["node_modules", ".git"],
-		"extensions": ["go", "js"],
-		"command": "go run main.go",
+		"rules": [
+			{
+				"extensions": ["go"],
+				"command": "go run main.go"
+			},
+			{
+				"extensions": ["js"],
+				"command": "node index.js"
+			}
+		],
 		"debounce_time": "500ms",
 		"live_reload": true,
 		"live_reload_port": 35729
@@ -58,8 +73,14 @@ func TestLoadConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
-	if config.Command != "go run main.go" {
-		t.Error("Expected command to be 'go run main.go'")
+	if len(config.Rules) != 2 {
+		t.Errorf("Expected 2 rules, got %d", len(config.Rules))
+	}
+	if config.Rules[0].Command != "go run main.go" {
+		t.Error("Expected first command to be 'go run main.go'")
+	}
+	if config.Rules[1].Command != "node index.js" {
+		t.Error("Expected second command to be 'node index.js'")
 	}
 	if !config.LiveReload {
 		t.Error("Expected live reload to be enabled")
@@ -145,23 +166,44 @@ func TestIsFrontendFile(t *testing.T) {
 
 // TestIsWatchedFileEdgeCases tests edge cases for isWatchedFile
 func TestIsWatchedFileEdgeCases(t *testing.T) {
+	rules := []Rule{
+		{Extensions: []string{"go"}, Command: "go run main.go"},
+		{Extensions: []string{"js"}, Command: "node index.js"},
+	}
+
 	tests := []struct {
-		path       string
-		extensions []string
-		expected   bool
+		path     string
+		expected bool
 	}{
-		{"main.go", []string{"go"}, true},
-		{"main.go", []string{"js"}, false},
-		{"script.js", []string{"js"}, true},
-		{"script.js", []string{"go"}, false},
-		{"README.md", []string{"go", "js"}, false},
-		{"", []string{"go"}, false}, // Empty path
+		{"main.go", true},
+		{"index.js", true},
+		{"README.md", false},
+		{"", false}, // Empty path
 	}
 
 	for _, test := range tests {
-		result := isWatchedFile(test.path, test.extensions)
+		result := isWatchedFile(test.path, rules)
 		if result != test.expected {
-			t.Errorf("isWatchedFile(%q, %v) = %v, expected %v", test.path, test.extensions, result, test.expected)
+			t.Errorf("isWatchedFile(%q) = %v, expected %v", test.path, result, test.expected)
 		}
+	}
+}
+
+// TestDefaultConfig tests the default configuration
+func TestDefaultConfig(t *testing.T) {
+	config := Config{
+		WatchDirs:      []string{"."},
+		IgnoreDirs:     []string{"node_modules", ".git"},
+		Rules:          []Rule{{Extensions: []string{"*"}, Command: "echo No command specified"}},
+		DebounceTime:   "500ms",
+		LiveReload:     false,
+		LiveReloadPort: 35729,
+	}
+
+	if len(config.WatchDirs) != 1 || config.WatchDirs[0] != "." {
+		t.Error("Expected default watch directory to be '.'")
+	}
+	if len(config.Rules) != 1 || config.Rules[0].Command != "echo No command specified" {
+		t.Error("Expected default rule to have a placeholder command")
 	}
 }

@@ -1,9 +1,17 @@
 {
-    "watch_dirs": [".", "src"],
-    "ignore_dirs": ["node_modules", ".git"],
-    "extensions": ["go", "js", "css", "html"],
-    "command": "go run main.go",
-    "debounce_time": "500ms",
-    "live_reload": true,
-    "live_reload_port": 35729
-  }
+  "watch_dirs": [".", "src"],
+  "ignore_dirs": ["node_modules", ".git"],
+  "rules": [
+    {
+      "extensions": ["go"],
+      "command": "go run main.go"
+    },
+    {
+      "extensions": ["js"],
+      "command": "node index.js"
+    }
+  ],
+  "debounce_time": "500ms",
+  "live_reload": true,
+  "live_reload_port": 35729
+}
