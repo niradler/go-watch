@@ -17,6 +17,18 @@ A lightweight, fast, and configurable file watcher for Go, inspired by `nodemon`
 go install github.com/niradler/go-watch@latest
 ```
 
+without go, you can use the binaries
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/niradler/go-watch/master/scripts/install.sh -o install.sh && bash install.sh
+```
+
+or for windows:
+
+```ps1
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/niradler/go-watch/master/scripts/install.ps1" -OutFile install.ps1; .\install.ps1
+```
+
 ## Usage
 
 ### Basic Usage (CLI Arguments)
