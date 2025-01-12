@@ -57,32 +57,20 @@ Create a `go-watch.config.json` or `go-watch.config.yaml` file for more advanced
 {
   "watch_dirs": [".", "src"],
   "ignore_dirs": ["node_modules", ".git"],
-  "extensions": ["go", "js", "css", "html"],
-  "command": "go run main.go",
+  "rules": [
+    {
+      "extensions": ["go"],
+      "command": "go run main.go"
+    },
+    {
+      "extensions": ["js"],
+      "command": "node index.js"
+    }
+  ],
   "debounce_time": "500ms",
   "live_reload": true,
   "live_reload_port": 35729
 }
-```
-
-#### YAML Example (`go-watch.config.yaml`)
-
-```yaml
-watch_dirs:
-  - .
-  - src
-ignore_dirs:
-  - node_modules
-  - .git
-extensions:
-  - go
-  - js
-  - css
-  - html
-command: go run main.go
-debounce_time: 500ms
-live_reload: true
-live_reload_port: 35729
 ```
 
 Run with the config file:
