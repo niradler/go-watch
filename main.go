@@ -51,13 +51,13 @@ func main() {
 	flag.Parse()
 
 	// Initialize logger
-	logger := log.New(os.Stdout, "[gowatcher] ", log.LstdFlags|log.Lshortfile)
+	logger := log.New(os.Stdout, "[go-watch] ", log.LstdFlags|log.Lshortfile)
 
 	// Default configuration
 	config := Config{
 		WatchDirs:      []string{*watchDir},
 		IgnoreDirs:     strings.Split(*ignoreDirs, ","),
-		Rules:          []Rule{{Extensions: []string{"*"}, Command: "echo No command specified"}},
+		Rules:          []Rule{},
 		DebounceTime:   *debounce,
 		LiveReload:     *liveReload,
 		LiveReloadPort: *liveReloadPort,
@@ -99,7 +99,6 @@ func main() {
 				if err := watcher.Add(path); err != nil {
 					return fmt.Errorf("failed to add %s to watcher: %v", path, err)
 				}
-				logger.Printf("Watching directory: %s", path)
 			}
 			return nil
 		})
@@ -156,7 +155,7 @@ func runCommand(command string, logger *log.Logger) {
 	cmd := exec.Command("sh", "-c", command)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	logger.Printf("Executing command: %s", command)
+
 	if err := cmd.Run(); err != nil {
 		logger.Printf("Command failed: %v", err)
 	}
@@ -212,7 +211,7 @@ func loadConfig(path string, logger *log.Logger) (Config, error) {
 		return config, fmt.Errorf("failed to parse config file: %v", err)
 	}
 
-	logger.Printf("Loaded config from %s", path)
+	logger.Printf("Config file location: %s", path)
 	return config, nil
 }
 
@@ -242,7 +241,7 @@ func startLiveReloadServer(port int, logger *log.Logger) {
 	})
 
 	logger.Printf("Live reload server started on port %d", port)
-	if err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil); err != nil {
+	if err := http.ListenAndServe(fmt.Sprintf("localhost:%d", port), nil); err != nil {
 		logger.Fatalf("Failed to start live reload server: %v", err)
 	}
 }

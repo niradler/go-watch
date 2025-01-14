@@ -1,17 +1,17 @@
 {
-  "watch_dirs": [".", "src"],
+  "watch_dirs": [".", "bin"],
   "ignore_dirs": ["node_modules", ".git"],
   "rules": [
     {
-      "extensions": ["go"],
-      "command": "go run main.go"
+      "extensions": ["json"],
+      "command": "echo json file changed"
     },
     {
-      "extensions": ["js"],
-      "command": "node index.js"
+      "extensions": ["go"],
+      "command": "go test -v"
     }
   ],
-  "debounce_time": "500ms",
+  "debounce_time": "3s",
   "live_reload": true,
   "live_reload_port": 35729
 }
