@@ -10,7 +10,7 @@ import (
 
 const (
 	projectName = "go-watch" // Replace with your project name
-	version     = "v0.0.6"   // Replace with your version
+	version     = "v0.0.8"   // Replace with your version
 )
 
 func main() {
