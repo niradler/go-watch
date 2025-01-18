@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -41,8 +42,10 @@ var (
 	ignoreDirs   = flag.String("ignore-dirs", "", "Comma-separated list of directories to ignore")
 	debounceTime = flag.String("debounce-time", "500ms", "Debounce time for file changes")
 	rules        = flag.String("rules", "", "Comma-separated list of rules in the format pattern:command")
+	shell        = flag.String("shell", "sh -c", "Shell to run commands")
 	logger       = log.New(os.Stdout, "[go-watch] ", log.LstdFlags|log.Lshortfile)
 	watcher      *fsnotify.Watcher
+	cmdProcesses = make(map[string]*exec.Cmd)
 )
 
 func init() {
@@ -76,6 +79,9 @@ func main() {
 	if err != nil {
 		logger.Fatalf("Invalid debounce time: %v", err)
 	}
+
+	logger.Println("Executing initial commands...")
+	executeInitialCommands(config)
 
 	logger.Println("Starting watcher...")
 	addPatternsToWatcher(config)
@@ -198,6 +204,17 @@ func isIgnoredDir(path string, ignoreDirs []string) bool {
 	return false
 }
 
+func executeInitialCommands(config Config) {
+	for _, rule := range config.Rules {
+		for _, cmd := range rule.Commands {
+			logger.Printf("Executing initial command: %s", cmd.Cmd)
+			if !executeCommand(cmd) {
+				logger.Printf("Initial command failed: %s", cmd.Cmd)
+			}
+		}
+	}
+}
+
 func executeRules(filePath string, config Config) {
 	for _, rule := range config.Rules {
 		for _, pattern := range rule.Patterns {
@@ -220,10 +237,23 @@ func executeRules(filePath string, config Config) {
 }
 
 func executeCommand(cmd Command) bool {
-	command := exec.Command("sh", "-c", cmd.Cmd)
+	// Terminate any existing process for the command
+	if existingCmd, exists := cmdProcesses[cmd.Cmd]; exists && existingCmd.Process != nil {
+		logger.Printf("Terminating existing command: %s", cmd.Cmd)
+		if err := existingCmd.Process.Signal(syscall.SIGTERM); err != nil {
+			logger.Printf("Failed to terminate command: %s, Error: %v", cmd.Cmd, err)
+		}
+		existingCmd.Wait()
+	}
+
+	var command *exec.Cmd
+	shellArgs := strings.Split(*shell, " ")
+	command = exec.Command(shellArgs[0], append(shellArgs[1:], cmd.Cmd)...)
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
 	command.Env = os.Environ()
+
+	cmdProcesses[cmd.Cmd] = command
 
 	if cmd.Parallel {
 		go func() {
