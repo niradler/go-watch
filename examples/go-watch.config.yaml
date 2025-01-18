@@ -1,0 +1,51 @@
+# Rules to define actions based on file change patterns
+rules:
+  - patterns:
+      - "**/*.go"           # Matches all Go files in any subdirectory
+      - "**/*.mod"          # Matches Go module files
+    commands:
+      - command: "go build ./..."
+        parallel: false
+      - command: "go test ./..."
+        parallel: false
+
+  - patterns:
+      - "**/*.js"
+      - "**/*.ts"
+      - "**/*.jsx"
+      - "**/*.tsx"
+    commands:
+      - command: "eslint --fix ./src"
+        parallel: true
+      - command: "webpack --config webpack.config.js"
+        parallel: false
+
+  - patterns:
+      - "**/*.html"
+      - "**/*.css"
+      - "**/*.scss"
+    commands:
+      - command: "npx postcss ./src/styles.css -o ./dist/styles.css"
+        parallel: false
+      - command: "npx tailwindcss build ./src/tailwind.css -o ./dist/tailwind.css"
+        parallel: false
+
+  - patterns:
+      - "**/*.yaml"
+      - "**/*.yml"
+    commands:
+      - command: "docker-compose down && docker-compose up -d"
+        parallel: false
+
+  - patterns:
+      - "**/*.env"
+    commands:
+      - command: "killall -HUP my-service"
+        parallel: false
+
+# Time to debounce file change events
+debounce_time: "500ms"
+
+# Enable live reload for frontend workflows
+live_reload: true
+live_reload_port: 35729

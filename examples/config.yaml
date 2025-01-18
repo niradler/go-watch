@@ -1,0 +1,17 @@
+# Directories to ignore
+ignore_dirs:
+  - "bin"
+  - ".git"
+
+# Time to debounce file change events
+debounce_time: "500ms"
+
+# Rules to define actions based on file change patterns
+rules:
+  - patterns:
+      - "**/*.go"  # This matches .go files in any subdirectory
+      - "*.go"          
+    commands:
+      - cmd: "go test -v ./..."
+        parallel: false
+      - cmd: "echo 'Another command after tests'"

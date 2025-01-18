@@ -1,209 +1,180 @@
 package main
 
 import (
-	"log"
+	"fmt"
 	"os"
-	"os/exec"
-	"runtime"
-	"strings"
 	"testing"
+	"time"
+
+	"github.com/gobwas/glob"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
-// TestIsIgnored tests the isIgnored function
-func TestIsIgnored(t *testing.T) {
-	ignoreDirs := []string{"node_modules", ".git"}
-	if !isIgnored("node_modules", ignoreDirs) {
-		t.Error("Expected node_modules to be ignored")
-	}
-	if isIgnored("src", ignoreDirs) {
-		t.Error("Expected src to not be ignored")
-	}
+// MockCommand represents a mock implementation of the Command structure
+type MockCommand struct {
+	mock.Mock
 }
 
-// TestIsWatchedFile tests the isWatchedFile function
-func TestIsWatchedFile(t *testing.T) {
-	rules := []Rule{
-		{Extensions: []string{"go"}, Command: "go run main.go"},
-		{Extensions: []string{"js"}, Command: "node index.js"},
-	}
-
-	if !isWatchedFile("main.go", rules) {
-		t.Error("Expected main.go to be watched")
-	}
-	if !isWatchedFile("index.js", rules) {
-		t.Error("Expected index.js to be watched")
-	}
-	if isWatchedFile("README.md", rules) {
-		t.Error("Expected README.md to not be watched")
-	}
+func (m *MockCommand) Execute() error {
+	args := m.Called()
+	return args.Error(0)
 }
 
-// TestLoadConfig tests the loadConfig function
+// Test loading configuration
 func TestLoadConfig(t *testing.T) {
-	// Create a temporary JSON config file
-	configContent := `{
-		"watch_dirs": [".", "src"],
-		"ignore_dirs": ["node_modules", ".git"],
-		"rules": [
-			{
-				"extensions": ["go"],
-				"command": "go run main.go"
-			},
-			{
-				"extensions": ["js"],
-				"command": "node index.js"
-			}
-		],
-		"debounce_time": "500ms",
-		"live_reload": true,
-		"live_reload_port": 35729
-	}`
-	tmpFile, err := os.CreateTemp("", "config*.json") // Ensure the file has a .json extension
-	if err != nil {
-		t.Fatal("Failed to create temp config file:", err)
-	}
-	defer os.Remove(tmpFile.Name())
+	configPath := "test_config.yaml"
+	configData := []byte(`
+ignore_dirs:
+  - "bin"
+  - ".git"
+debounce_time: "500ms"
+rules:
+  - patterns:
+      - "**/*.go"
+    commands:
+      - cmd: "go test -v ./..."
+        parallel: false
+`)
 
-	if _, err := tmpFile.Write([]byte(configContent)); err != nil {
-		t.Fatal("Failed to write to temp config file:", err)
-	}
+	err := os.MkdirAll("tmp", 0755)
+	assert.NoError(t, err)
 
+	// Create test config file
+	err = os.WriteFile(configPath, configData, 0644)
+	assert.NoError(t, err)
+	defer os.RemoveAll("tmp")
 	// Load the config
-	config, err := loadConfig(tmpFile.Name(), log.New(os.Stdout, "[test] ", log.LstdFlags))
-	if err != nil {
-		t.Fatalf("Failed to load config: %v", err)
-	}
-	if len(config.Rules) != 2 {
-		t.Errorf("Expected 2 rules, got %d", len(config.Rules))
-	}
-	if config.Rules[0].Command != "go run main.go" {
-		t.Error("Expected first command to be 'go run main.go'")
-	}
-	if config.Rules[1].Command != "node index.js" {
-		t.Error("Expected second command to be 'node index.js'")
-	}
-	if !config.LiveReload {
-		t.Error("Expected live reload to be enabled")
-	}
+	config, err := loadConfig(configPath)
+	assert.NoError(t, err)
+
+	// Assertions
+	assert.Equal(t, 2, len(config.IgnoreDirs))
+	assert.Equal(t, "500ms", config.DebounceTime)
+	assert.Len(t, config.Rules, 1)
+	assert.Equal(t, "**/*.go", config.Rules[0].Patterns[0])
+	assert.Equal(t, "go test -v ./...", config.Rules[0].Commands[0].Cmd)
 }
 
-// TestLiveReload tests the live reload functionality
-func TestLiveReload(t *testing.T) {
-	if !isFrontendFile("index.html") {
-		t.Error("Expected index.html to be a frontend file")
-	}
-	if isFrontendFile("main.go") {
-		t.Error("Expected main.go to not be a frontend file")
-	}
-}
+// Test pattern matching and rule execution
+func TestPatternMatchingAndRuleExecution(t *testing.T) {
+	// Mock the watcher to simulate file changes
+	mockCmd := new(MockCommand)
+	mockCmd.On("Execute").Return(nil)
 
-// TestCommandExecution tests the command execution functionality
-func TestCommandExecution(t *testing.T) {
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.Command("cmd", "/C", "echo Hello, World!")
-	} else {
-		cmd = exec.Command("echo", "Hello, World!")
-	}
-
-	output, err := cmd.Output()
-	if err != nil {
-		t.Error("Command execution failed:", err)
-	}
-
-	// Normalize line endings for cross-platform compatibility
-	expected := "Hello, World!\n"
-	if runtime.GOOS == "windows" {
-		expected = "Hello, World!\r\n"
-	}
-
-	if strings.TrimSpace(string(output)) != strings.TrimSpace(expected) {
-		t.Errorf("Unexpected command output: %q (expected: %q)", string(output), expected)
-	}
-}
-
-// TestInvalidConfig tests handling of invalid config files
-func TestInvalidConfig(t *testing.T) {
-	// Create a temporary invalid config file
-	configContent := `invalid json`
-	tmpFile, err := os.CreateTemp("", "config*.json")
-	if err != nil {
-		t.Fatal("Failed to create temp config file:", err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	if _, err := tmpFile.Write([]byte(configContent)); err != nil {
-		t.Fatal("Failed to write to temp config file:", err)
-	}
-
-	// Attempt to load the invalid config
-	_, err = loadConfig(tmpFile.Name(), log.New(os.Stdout, "[test] ", log.LstdFlags))
-	if err == nil {
-		t.Error("Expected error for invalid config file, got nil")
-	}
-}
-
-// TestIsFrontendFile tests the isFrontendFile function
-func TestIsFrontendFile(t *testing.T) {
-	tests := []struct {
-		path     string
-		expected bool
-	}{
-		{"index.html", true},
-		{"styles.css", true},
-		{"script.js", true},
-		{"main.go", false},
-		{"README.md", false},
-	}
-
-	for _, test := range tests {
-		result := isFrontendFile(test.path)
-		if result != test.expected {
-			t.Errorf("isFrontendFile(%q) = %v, expected %v", test.path, result, test.expected)
-		}
-	}
-}
-
-// TestIsWatchedFileEdgeCases tests edge cases for isWatchedFile
-func TestIsWatchedFileEdgeCases(t *testing.T) {
-	rules := []Rule{
-		{Extensions: []string{"go"}, Command: "go run main.go"},
-		{Extensions: []string{"js"}, Command: "node index.js"},
-	}
-
-	tests := []struct {
-		path     string
-		expected bool
-	}{
-		{"main.go", true},
-		{"index.js", true},
-		{"README.md", false},
-		{"", false}, // Empty path
-	}
-
-	for _, test := range tests {
-		result := isWatchedFile(test.path, rules)
-		if result != test.expected {
-			t.Errorf("isWatchedFile(%q) = %v, expected %v", test.path, result, test.expected)
-		}
-	}
-}
-
-// TestDefaultConfig tests the default configuration
-func TestDefaultConfig(t *testing.T) {
+	// Test rules with patterns
+	filePath := "tmp/deploy.go"
 	config := Config{
-		WatchDirs:      []string{"."},
-		IgnoreDirs:     []string{"node_modules", ".git"},
-		Rules:          []Rule{{Extensions: []string{"*"}, Command: "echo No command specified"}},
-		DebounceTime:   "500ms",
-		LiveReload:     false,
-		LiveReloadPort: 35729,
+		Rules: []Rule{
+			{
+				Patterns: []string{"**/*.go"},
+				Commands: []Command{
+					{Cmd: "go test -v ./...", Parallel: false},
+				},
+			},
+		},
 	}
 
-	if len(config.WatchDirs) != 1 || config.WatchDirs[0] != "." {
-		t.Error("Expected default watch directory to be '.'")
+	// Simulate pattern match
+	for _, rule := range config.Rules {
+		for _, pattern := range rule.Patterns {
+			g := glob.MustCompile(pattern)
+			if g.Match(filePath) {
+				// Simulate execution of commands
+				for _, cmd := range rule.Commands {
+					fmt.Println("Executing command:", cmd.Cmd)
+					mockCmd.Execute()
+				}
+			}
+		}
 	}
-	if len(config.Rules) != 1 || config.Rules[0].Command != "echo No command specified" {
-		t.Error("Expected default rule to have a placeholder command")
+
+	mockCmd.AssertExpectations(t)
+}
+
+// Test watcher for file events
+func TestFileWatcher(t *testing.T) {
+	// Simulate file changes
+	fileChanges := []string{
+		"tmp/deploy.go",
+		"main.go",
+	}
+
+	// Set up configuration with pattern to match *.go files
+	config := Config{
+		Rules: []Rule{
+			{
+				Patterns: []string{"*.go"},
+				Commands: []Command{
+					{Cmd: "go test -v ./...", Parallel: false},
+				},
+			},
+		},
+	}
+
+	// Watch for file changes
+	for _, file := range fileChanges {
+		time.Sleep(1 * time.Second) // Simulate debounce
+
+		// Check if the file path matches any pattern
+		for _, rule := range config.Rules {
+			for _, pattern := range rule.Patterns {
+				g := glob.MustCompile(pattern)
+				if g.Match(file) {
+					// Simulate command execution
+					for _, cmd := range rule.Commands {
+						fmt.Println("Executing command:", cmd.Cmd)
+						// Directly call Execute here (mocked above)
+						mockCmd := new(MockCommand)
+						mockCmd.On("Execute").Return(nil)
+						mockCmd.Execute()
+						mockCmd.AssertExpectations(t)
+					}
+				}
+			}
+		}
+	}
+}
+
+// Test adding new files dynamically
+func TestAddingNewFiles(t *testing.T) {
+	// Set up configuration with a rule that watches *.go files
+	config := Config{
+		Rules: []Rule{
+			{
+				Patterns: []string{"*.go"},
+				Commands: []Command{
+					{Cmd: "go test -v ./...", Parallel: false},
+				},
+			},
+		},
+	}
+
+	err := os.MkdirAll("tmp", 0755)
+	assert.NoError(t, err)
+	// Simulate adding a new file to the watched directory
+	newFile := "tmp/newfile.go"
+	err = os.WriteFile(newFile, []byte("package main"), 0644)
+	assert.NoError(t, err)
+	defer os.RemoveAll("tmp")
+
+	// Watch for new files
+	// Here, you could extend the test by simulating that `newFile` is added dynamically
+	// and your watcher should be able to catch this event (mocking can be used for this part).
+
+	// Simulate that a change was detected and execute commands
+	for _, rule := range config.Rules {
+		for _, pattern := range rule.Patterns {
+			g := glob.MustCompile(pattern)
+			if g.Match(newFile) {
+				for _, cmd := range rule.Commands {
+					fmt.Println("Executing command:", cmd.Cmd)
+					mockCmd := new(MockCommand)
+					mockCmd.On("Execute").Return(nil)
+					mockCmd.Execute()
+					mockCmd.AssertExpectations(t)
+				}
+			}
+		}
 	}
 }

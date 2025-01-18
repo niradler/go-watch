@@ -1,0 +1,11 @@
+
+ignore_dirs:
+  - "bin"
+  - ".git"
+debounce_time: "500ms"
+rules:
+  - patterns:
+      - "**/*.go"
+    commands:
+      - cmd: "go test -v ./..."
+        parallel: false
